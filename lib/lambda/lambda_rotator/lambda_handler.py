@@ -180,6 +180,12 @@ def test_secret(service_client, arn, token):
         token (string): The ClientRequestToken associated with the secret version
 
     """
+    replicationGroupId = os.environ['replicationGroupId']
+    client = boto3.client('elasticache')
+
+    while (not is_cluster_available(client, replicationGroupId)):
+      time.sleep(3)
+
     response = service_client.get_secret_value(SecretId=arn, VersionId=token, VersionStage="AWSPENDING")
     replicationGroupId = os.environ['replicationGroupId']
     try:
