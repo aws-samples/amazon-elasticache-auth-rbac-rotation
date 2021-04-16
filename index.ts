@@ -5,7 +5,7 @@ import elasticache = require('@aws-cdk/aws-elasticache');
 import lambda = require('@aws-cdk/aws-lambda');
 import secretsmanager = require('@aws-cdk/aws-secretsmanager')
 import path = require('path');
-import { RedisSingleAuth } from './lib/redisRotator';
+import { RedisRbacRotation, RedisSingleAuthRotation } from './lib/redisRotator';
 
 
 export class RedisAuthRotationDemo extends cdk.Stack {
@@ -70,7 +70,7 @@ export class RedisAuthRotationDemo extends cdk.Stack {
       subnetIds: isolatedSubnets
     });
 
-    const redisSingleAuth = new RedisSingleAuth(this, 'SingleAuth', {
+    const redisSingleAuth = new RedisSingleAuthRotation(this, 'SingleAuth', {
       replicationGroupId: 'redisSingleAuthDemo',
       elasticacheSubnetGroup: ecSubnetGroup,
       elasticacheSecurityGroupIds: [ecSecurityGroup.securityGroupId],
