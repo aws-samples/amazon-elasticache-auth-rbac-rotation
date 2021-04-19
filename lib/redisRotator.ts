@@ -1,3 +1,20 @@
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: MIT-0
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this
+ * software and associated documentation files (the "Software"), to deal in the Software
+ * without restriction, including without limitation the rights to use, copy, modify,
+ * merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ * PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 import cdk = require('@aws-cdk/core');
 import ec2 = require('@aws-cdk/aws-ec2');
 import iam = require('@aws-cdk/aws-iam');
@@ -19,7 +36,7 @@ interface singleAuthRedisProps{
 
 interface rbacRedisProps{
   replicationGroupId: string,
-  elasticacheSubnetGroup: elasticache.CfnSubnetGroup,
+  elasticacheSubnetGroupName: string,
   elasticacheSecurityGroupIds: string[],
   rotatorFunctionSecurityGroups: ec2.SecurityGroup[],
   rotationSchedule: cdk.Duration,
@@ -28,10 +45,18 @@ interface rbacRedisProps{
 
 export class RedisRbacRotation extends cdk.Construct{
 
-  constructor(scope: cdk.Construct, id: string, props: singleAuthRedisProps) {
+  constructor(scope: cdk.Construct, id: string, props: rbacRedisProps) {
     super(scope, id);
 
     const testUserName = 'rotationtestuser'
+
+    const redisPyLayer = new lambda.LayerVersion(this, 'redispy_Layer', {
+      code: lambda.Code.fromAsset(path.join(__dirname, 'lambda/lambda_layer/redis_py.zip')),
+      compatibleRuntimes: [lambda.Runtime.PYTHON_3_8, lambda.Runtime.PYTHON_3_7, lambda.Runtime.PYTHON_3_6],
+      description: 'A layer that contains the redispy module',
+      license: 'MIT License'
+    });
+
 
     const testUserRole = new iam.Role(this, testUserName+'Role', {
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
@@ -42,22 +67,36 @@ export class RedisRbacRotation extends cdk.Construct{
     testUserRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSLambdaVPCAccessExecutionRole"));
 
     const testUser = new RedisRbacUser(this, testUserName, {
-      redisUserName: testUserName,
-      redisUserId: testUserName,
+      redisUserName: 'rotator-demo/rotationtestuser',
+      redisUserId: 'rotationtestuser',
       accessString: 'on ~* -@all +SET',
-      principals: [testUserRole]
+      principals: [testUserRole],
+      redisPyLayer: [redisPyLayer],
+      rotationSchedule: props.rotationSchedule,
+      rotatorFunctionVpc: props.rotatorVpc,
+      rotatorFunctionSecurityGroups: props.rotatorFunctionSecurityGroups
+    });
+
+    const anotherUser = new RedisRbacUser(this, testUserName+"anouther", {
+      redisUserName: 'rotator-demo/anothertestuser',
+      redisUserId: 'anotherrotationtestuser',
+      accessString: 'on ~* -@all +SET',
+      principals: [testUserRole],
+      redisPyLayer: [redisPyLayer],
+      rotationSchedule: props.rotationSchedule,
+      rotatorFunctionVpc: props.rotatorVpc,
+      rotatorFunctionSecurityGroups: props.rotatorFunctionSecurityGroups
     });
 
     const groupDefaultRbacUser = new RedisRbacUser(this, "groupDefaultUser", {
       redisUserName: 'default',
-      redisUserId: 'groupdefaultuser',
+      redisUserId: 'rotatordemodefaultuser',
     });
-
 
     const rotationTestUserGroup = new elasticache.CfnUserGroup(this, 'rotationTestUserGroup', {
       engine: 'redis',
       userGroupId: 'rotation-test-group',
-      userIds: [testUser.getUserId(), groupDefaultRbacUser.getUserId()]
+      userIds: [testUser.getUserId(), groupDefaultRbacUser.getUserId(), anotherUser.getUserId()]
     })
 
     rotationTestUserGroup.node.addDependency(testUserRole);
@@ -68,7 +107,7 @@ export class RedisRbacRotation extends cdk.Construct{
       atRestEncryptionEnabled: true,
       multiAzEnabled: true,
       cacheNodeType: 'cache.m6g.large',
-      cacheSubnetGroupName: props.elasticacheSubnetGroup.cacheSubnetGroupName,
+      cacheSubnetGroupName: props.elasticacheSubnetGroupName,
       engine: "Redis",
       engineVersion: '6.x',
       numNodeGroups: 1,
@@ -79,29 +118,11 @@ export class RedisRbacRotation extends cdk.Construct{
       userGroupIds: [rotationTestUserGroup.userGroupId]
     })
 
+    ecClusterReplicationGroup.node.addDependency(rotationTestUserGroup)
 
-    // const redisPyLayer = new lambda.LayerVersion(this, 'redispy_Layer', {
-    //   code: lambda.Code.fromAsset(path.join(__dirname, 'lambda/lambda_layer/redis_py.zip')),
-    //   compatibleRuntimes: [lambda.Runtime.PYTHON_3_8, lambda.Runtime.PYTHON_3_7, lambda.Runtime.PYTHON_3_6],
-    //   description: 'A layer that contains the redispy module',
-    //   license: 'MIT License'
-    // });
 
-    // const rbacRotationTestFunction = new lambda.Function(this, 'rbacRotationTest', {
-    //   runtime: lambda.Runtime.PYTHON_3_7,
-    //   handler: 'lambda_tester.lambda_handler',
-    //   code: lambda.Code.fromAsset(path.join(__dirname, 'lambda/lambda_rotator')),
-    //   layers: [redisPyLayer],
-    //   role: testUserRole,
-    //   vpc: props.rotatorVpc,
-    //   vpcSubnets: {subnetType: ec2.SubnetType.PRIVATE},
-    //   securityGroups: props.rotatorFunctionSecurityGroups,
-    //   environment: {
-    //     redis_endpoint: ecClusterReplicationGroup.attrPrimaryEndPointAddress,
-    //     redis_port: ecClusterReplicationGroup.attrPrimaryEndPointPort,
-    //     secret_arn: testUser.getSecret().secretArn,
-    //   }
-    // });
+
+
 
     // producerLambda.node.addDependency(redisPyLayer);
     // producerLambda.node.addDependency(ecClusterReplicationGroup);

@@ -17,18 +17,24 @@
  */
 import cdk = require('@aws-cdk/core');
 import kms = require ('@aws-cdk/aws-kms');
+import ec2 = require ('@aws-cdk/aws-ec2');
 import iam = require('@aws-cdk/aws-iam');
 import elasticache = require('@aws-cdk/aws-elasticache');
 import secretsmanager = require('@aws-cdk/aws-secretsmanager');
 import lambda = require('@aws-cdk/aws-lambda');
 import path = require('path');
+import { CfnEC2Fleet } from '@aws-cdk/aws-ec2';
 
 export interface RedisRbacUserProps {
   redisUserName: string;
   redisUserId: string;
   accessString?: string;
   kmsKey?: kms.Key;
-  principals?: iam.IPrincipal[]
+  principals?: iam.IPrincipal[];
+  rotationSchedule?: cdk.Duration;
+  redisPyLayer?: lambda.ILayerVersion[];
+  rotatorFunctionVpc?: ec2.Vpc;
+  rotatorFunctionSecurityGroups?: ec2.ISecurityGroup[]
 }
 
 
@@ -80,9 +86,16 @@ export class RedisRbacUser extends cdk.Construct {
     this.rbacUserId = props.redisUserId
     this.rbacUserName = props.redisUserName
 
+    let enableSecretRotation = true
+    if (props.redisPyLayer == undefined ||
+      props.rotatorFunctionVpc == undefined ||
+      props.rotatorFunctionSecurityGroups == undefined){
+        enableSecretRotation = false
+      }
+
     if (!props.kmsKey) {
       this.kmsKey = new kms.Key(this, 'kmsForSecret', {
-        alias: 'redisRbacUser/'+this.rbacUserName,
+        alias: this.rbacUserName,
         enableKeyRotation: true
       });
     } else {
@@ -114,6 +127,62 @@ export class RedisRbacUser extends cdk.Construct {
       });
     }
 
+    if (enableSecretRotation) {
+      const rotatorRole = new iam.Role(this, 'rotatorRole', {
+        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+        description: 'Role to be assumed by producer  lambda',
+      });
+
+      rotatorRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSLambdaBasicExecutionRole"));
+      rotatorRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSLambdaVPCAccessExecutionRole"));
+      rotatorRole.addToPolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          resources: [this.rbacUserSecret.secretArn],
+          actions: [
+            "secretsmanager:DescribeSecret",
+            "secretsmanager:GetSecretValue",
+            "secretsmanager:PutSecretValue",
+            "secretsmanager:UpdateSecretVersionStage",
+          ]
+        })
+      );
+
+
+      rotatorRole.addToPolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          resources: ["*"],
+          actions: [
+            "secretsmanager:GetRandomPassword"
+          ]
+        })
+      );
+
+      const rbacCredentialRotator = new lambda.Function(this, 'rbacRotatorFunction', {
+        runtime: lambda.Runtime.PYTHON_3_7,
+        handler: 'lambda_tester.lambda_handler',
+        code: lambda.Code.fromAsset(path.join(__dirname, 'lambda/lambda_rotator')),
+        layers: props.redisPyLayer,
+        role: rotatorRole,
+        vpc: props.rotatorFunctionVpc,
+        vpcSubnets: {subnetType: ec2.SubnetType.PRIVATE},
+        securityGroups: props.rotatorFunctionSecurityGroups,
+        environment: {
+          secret_arn: this.rbacUserSecret.secretArn,
+        }
+      });
+
+      // this.rbacUserSecret.addRotationSchedule('RotationSchedule', {
+      //   rotationLambda: rbacCredentialRotator,
+      //   automaticallyAfter: props.rotationSchedule
+      // });
+
+      // this.rbacUserSecret.grantRead(rbacCredentialRotator);
+
+      // rbacCredentialRotator.grantInvoke(new iam.ServicePrincipal('secretsmanager.amazonaws.com'))
+
+    }
   }
 
 }
