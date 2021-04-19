@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
 
 rm -rf lib/lambda/lambda_layer/workspace
 mkdir -p lib/lambda/lambda_layer/workspace
