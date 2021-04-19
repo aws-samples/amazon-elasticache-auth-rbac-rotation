@@ -10,6 +10,7 @@ drawio/
 scripts/
 
 lib/lambda/lib/redis_module
+lib/lambda/lambda_layer
 .DS_Store
 dump.rdb
 mock_app.zip
