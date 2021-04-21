@@ -4,6 +4,7 @@
   "description": "Shows how to use a custom resource",
   "private": true,
   "scripts": {
+    "prepare": "./build_zips.sh",
     "build": "./build_zips.sh && tsc",
     "watch": "tsc -w",
     "cdk": "cdk"
@@ -13,7 +14,7 @@
     "url": "https://aws.amazon.com",
     "organization": true
   },
-  "license": "Apache-2.0",
+  "license": "MIT-0",
   "devDependencies": {
     "@aws-cdk/assert": "*",
     "@types/jest": "^26.0.10",
