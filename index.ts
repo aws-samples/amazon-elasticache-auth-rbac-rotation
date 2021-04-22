@@ -75,16 +75,16 @@ export class RedisAuthRotationDemo extends cdk.Stack {
 
 
 
-    const redisSingleAuth = new RedisSingleAuthRotation(this, 'SingleAuth', {
-      replicationGroupId: 'redisSingleAuthDemo',
-      elasticacheSubnetGroup: ecSubnetGroup,
-      elasticacheSecurityGroupIds: [ecSecurityGroup.securityGroupId],
-      rotatorFunctionSecurityGroups: [ecSecurityGroup, rotatorSecurityGroup],
-      rotationSchedule: cdk.Duration.days(15),
-      rotatorVpc: vpc
-    })
+    // const redisSingleAuth = new RedisSingleAuthRotation(this, 'SingleAuth', {
+    //   replicationGroupId: 'redisSingleAuthDemo',
+    //   elasticacheSubnetGroup: ecSubnetGroup,
+    //   elasticacheSecurityGroupIds: [ecSecurityGroup.securityGroupId],
+    //   rotatorFunctionSecurityGroups: [ecSecurityGroup, rotatorSecurityGroup],
+    //   rotationSchedule: cdk.Duration.days(15),
+    //   rotatorVpc: vpc
+    // })
 
-    const redisRbac = new RedisRbacRotation(this, 'RedisRbacRotator', {
+    const redisRbac = new RedisRbacRotation(this, 'RbacRotate', {
       replicationGroupId: 'redisRbacRotatorDemo',
       elasticacheSubnetGroupName: ecSubnetGroup.ref,
       elasticacheSecurityGroupIds: [ecSecurityGroup.securityGroupId],

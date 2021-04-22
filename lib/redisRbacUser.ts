@@ -159,9 +159,9 @@ export class RedisRbacUser extends cdk.Construct {
         })
       );
 
-      const rbacCredentialRotator = new lambda.Function(this, 'rbacRotatorFunction', {
+      const rbacCredentialRotator = new lambda.Function(this, 'RotatorFunction', {
         runtime: lambda.Runtime.PYTHON_3_7,
-        handler: 'lambda_tester.lambda_handler',
+        handler: 'lambda_handler.lambda_handler',
         code: lambda.Code.fromAsset(path.join(__dirname, 'lambda/lambda_rotator')),
         layers: props.redisPyLayer,
         role: rotatorRole,
@@ -170,17 +170,22 @@ export class RedisRbacUser extends cdk.Construct {
         securityGroups: props.rotatorFunctionSecurityGroups,
         environment: {
           secret_arn: this.rbacUserSecret.secretArn,
+          EXCLUDE_CHARACTERS: '@%*()_+=`~{}|[]\\:";\'?,./',
+          SECRETS_MANAGER_ENDPOINT: "https://secretsmanager."+cdk.Stack.of(this).region+".amazonaws.com"
         }
       });
 
-      // this.rbacUserSecret.addRotationSchedule('RotationSchedule', {
-      //   rotationLambda: rbacCredentialRotator,
-      //   automaticallyAfter: props.rotationSchedule
-      // });
+      this.rbacUserSecret.grantRead(rbacCredentialRotator);
+      this.rbacUserSecret.grantWrite(rbacCredentialRotator);
+      rbacCredentialRotator.grantInvoke(new iam.ServicePrincipal('secretsmanager.amazonaws.com'))
 
-      // this.rbacUserSecret.grantRead(rbacCredentialRotator);
+      this.rbacUserSecret.addRotationSchedule('RotationSchedule', {
+        rotationLambda: rbacCredentialRotator,
+        automaticallyAfter: props.rotationSchedule
+      });
 
-      // rbacCredentialRotator.grantInvoke(new iam.ServicePrincipal('secretsmanager.amazonaws.com'))
+      this.rbacUserSecret.grantRead(rbacCredentialRotator);
+
 
     }
   }

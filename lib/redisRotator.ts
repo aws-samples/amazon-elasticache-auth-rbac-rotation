@@ -66,7 +66,7 @@ export class RedisRbacRotation extends cdk.Construct{
     testUserRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSLambdaBasicExecutionRole"));
     testUserRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSLambdaVPCAccessExecutionRole"));
 
-    const testUser = new RedisRbacUser(this, testUserName, {
+    const testUser = new RedisRbacUser(this, "TestUser", {
       redisUserName: 'rotator-demo/rotationtestuser',
       redisUserId: 'rotationtestuser',
       accessString: 'on ~* -@all +SET',
@@ -77,7 +77,7 @@ export class RedisRbacRotation extends cdk.Construct{
       rotatorFunctionSecurityGroups: props.rotatorFunctionSecurityGroups
     });
 
-    const anotherUser = new RedisRbacUser(this, testUserName+"anouther", {
+    const anotherUser = new RedisRbacUser(this, "AnotherUser", {
       redisUserName: 'rotator-demo/anothertestuser',
       redisUserId: 'anotherrotationtestuser',
       accessString: 'on ~* -@all +SET',
@@ -120,13 +120,6 @@ export class RedisRbacRotation extends cdk.Construct{
 
     ecClusterReplicationGroup.node.addDependency(rotationTestUserGroup)
 
-
-
-
-
-    // producerLambda.node.addDependency(redisPyLayer);
-    // producerLambda.node.addDependency(ecClusterReplicationGroup);
-    // producerLambda.node.addDependency(vpc);
   }
 
 
