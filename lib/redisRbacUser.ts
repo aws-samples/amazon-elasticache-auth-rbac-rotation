@@ -86,7 +86,7 @@ export class RedisRbacUser extends cdk.Construct {
     this.rbacUserId = props.redisUserId
     this.rbacUserName = props.redisUserName
 
-    let enableSecretRotation = true
+    let enableSecretRotation = false
     if (props.redisPyLayer == undefined ||
       props.rotatorFunctionVpc == undefined ||
       props.rotatorFunctionSecurityGroups == undefined){
@@ -104,12 +104,13 @@ export class RedisRbacUser extends cdk.Construct {
 
     this.rbacUserSecret = new secretsmanager.Secret(this, 'secret', {
       generateSecretString: {
-        secretStringTemplate: JSON.stringify({ username: props.redisUserName }),
+        secretStringTemplate: JSON.stringify({ username: props.redisUserName, userId: props.redisUserId }),
         generateStringKey: 'password',
         excludeCharacters: '@%*()_+=`~{}|[]\\:";\'?,./'
       },
       encryptionKey: this.kmsKey
     });
+
 
     const user = new elasticache.CfnUser(this, 'redisuser', {
       engine: 'redis',
@@ -161,7 +162,7 @@ export class RedisRbacUser extends cdk.Construct {
 
       const rbacCredentialRotator = new lambda.Function(this, 'RotatorFunction', {
         runtime: lambda.Runtime.PYTHON_3_7,
-        handler: 'lambda_handler.lambda_handler',
+        handler: 'lambda_rbac_rotator.lambda_handler',
         code: lambda.Code.fromAsset(path.join(__dirname, 'lambda/lambda_rotator')),
         layers: props.redisPyLayer,
         role: rotatorRole,

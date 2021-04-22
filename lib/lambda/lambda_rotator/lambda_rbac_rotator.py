@@ -20,6 +20,7 @@ import os
 import json
 import time
 import redis
+import base64
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -50,6 +51,8 @@ def lambda_handler(event, context):
     token = event['ClientRequestToken']
     step = event['Step']
 
+    print("****")
+    print(event)
 
     # Setup the client
     service_client = boto3.client('secretsmanager', endpoint_url=os.environ['SECRETS_MANAGER_ENDPOINT'])
@@ -126,11 +129,7 @@ def create_secret(service_client, arn, token):
 
 
 def set_secret(service_client, arn, token):
-#   {
-#   "Step": "Set",
-#   "SecretId": "arn:aws:secretsmanager:us-east-1:323144477050:secret:RedisAuthAF1E8ACD-ahzrCUonZBP7-PzbBrY",
-#   "ClientRequestToken": "ca87e860-e419-4cce-9e62-b1d2c7e1cede"
-# }
+
     """Set the secret
 
     This method should set the AWSPENDING secret in the service that the secret belongs to. For example, if the secret is a database
@@ -146,31 +145,45 @@ def set_secret(service_client, arn, token):
     """
     # This is where the secret should be set in the service
 
-    # service_client = boto3.client("secretsmanager")
+    service_client = boto3.client("secretsmanager")
 
-    response = service_client.get_secret_value(SecretId=arn, VersionId=token, VersionStage="AWSPENDING")
+    response = service_client.get_secret_value(SecretId=arn, VersionId=token)
+    print(response)
 
-    logger.info("setSecret!")
-    logger.info("arn "+arn)
-    logger.info("token "+token)
+    if 'AWSCURRENT' in response['VersionStages']:
+      print(response)
 
-    client = boto3.client('elasticache')
+      print("****")
+      response = service_client.get_secret_value(SecretId=arn, VersionId=token, VersionStage="AWSPENDING")
+      pending_secret = (response['SecretString'])
 
-    logger.info("Elasticache client created")
-    logger.info("SecretString "+response['SecretString'])
+      response = service_client.get_secret_value(SecretId=arn, VersionId=token, VersionStage="AWSCURRENT")
+      print(response)
+      print("****")
+      current_secret = (response['SecretString'])
+      # print('username '+secret['username'])
+      # print('username '+secret['userId'])
+      # print('password '+secret['password'])
+      logger.info("setSecret!")
+      logger.info("arn "+arn)
+      logger.info("token "+token)
+
+      client = boto3.client('elasticache')
+
+      logger.info("Elasticache client created")
+      logger.info("SecretString "+response['SecretString'])
 
 
-    # SWAP to change rbac pwd
-    response = client.modify_replication_group(
-      ApplyImmediately=True,
-      ReplicationGroupId=replicationGroupId,
-      AuthToken=response['SecretString'],
+      response = client.modify_user(
+        UserId = secret['userId'],
+        Passwords=[
+          current_secret['password'],
+          pending_secret['password']
+        ]
+      )
 
-      AuthTokenUpdateStrategy='ROTATE'
-    )
 
-
-    logger.info(response)
+      logger.info(response)
 
     logger.info("setSecret: Successfully set secret for %s." % arn)
 
@@ -190,33 +203,48 @@ def test_secret(service_client, arn, token):
         token (string): The ClientRequestToken associated with the secret version
 
     """
-    replicationGroupId = os.environ['replicationGroupId']
-    client = boto3.client('elasticache')
+    service_client = boto3.client("secretsmanager")
+    response = service_client.get_secret_value(SecretId=arn, VersionId=token)
+    print(response)
+
+    if 'AWSCURRENT' in response['VersionStages']:
+      response = service_client.get_secret_value(SecretId=arn, VersionId=token, VersionStage="AWSPENDING")
+
+      pending_secret = (response['SecretString'])
+
+
+      client = boto3.client('elasticache')
+      response = client.describe_users(
+        UserId=pending_secret['userId']
+      )
+
+      print(response)
+
+    # response = service_client.get_secret_value(SecretId=arn, VersionId=token, VersionStage="AWSPENDING")
 
     # SWAP to change rbac pwd
-    response = service_client.get_secret_value(SecretId=arn, VersionId=token, VersionStage="AWSPENDING")
-    replicationGroupId = os.environ['replicationGroupId']
-    try:
-        redis_server = redis.Redis(
-            host=os.environ['redis_endpoint'],
-            port=os.environ['redis_port'],
-            password=response['SecretString'],
-            ssl=True)
+    # replicationGroupId = os.environ['replicationGroupId']
+    # try:
+    #     redis_server = redis.Redis(
+    #         host=os.environ['redis_endpoint'],
+    #         port=os.environ['redis_port'],
+    #         password=response['SecretString'],
+    #         ssl=True)
 
-        response = redis_server.client_list()
-        logger.info(response)
-    except:
-        logger.error("test: Unabled to secret for %s." % arn)
-        client = boto3.client('elasticache')
+    #     response = redis_server.client_list()
+    #     logger.info(response)
+    # except:
+    #     logger.error("test: Unabled to secret for %s." % arn)
+    #     client = boto3.client('elasticache')
 
-        # SWAP to change rbac pwd
-        response = client.modify_replication_group(
-          ApplyImmediately=True,
-          ReplicationGroupId=replicationGroupId,
-          AuthToken=response['SecretString'],
+    #     # SWAP to change rbac pwd
+    #     response = client.modify_replication_group(
+    #       ApplyImmediately=True,
+    #       ReplicationGroupId=replicationGroupId,
+    #       AuthToken=response['SecretString'],
 
-          AuthTokenUpdateStrategy='DELETE'
-        )
+    #       AuthTokenUpdateStrategy='DELETE'
+    #     )
     logger.info("test: Successfully test secret for %s." % arn)
     # This is where the secret should be tested against the service
 
@@ -242,19 +270,18 @@ def finish_secret(service_client, arn, token):
     metadata = service_client.describe_secret(SecretId=arn)
     response = service_client.get_secret_value(SecretId=arn, VersionId=token, VersionStage="AWSPENDING")
 
-    replicationGroupId = os.environ['replicationGroupId']
     client = boto3.client('elasticache')
 
-    while (not is_cluster_available(client, replicationGroupId)):
-      time.sleep(3)
 
     # SWAP to change rbac pwd
-    response = client.modify_replication_group(
-      ApplyImmediately=True,
-      ReplicationGroupId=replicationGroupId,
-      AuthToken=response['SecretString'],
-      AuthTokenUpdateStrategy='SET'
-    )
+    # replicationGroupId = os.environ['replicationGroupId']
+
+    # response = client.modify_replication_group(
+    #   ApplyImmediately=True,
+    #   ReplicationGroupId=replicationGroupId,
+    #   AuthToken=response['SecretString'],
+    #   AuthTokenUpdateStrategy='SET'
+    # )
 
     current_version = None
     for version in metadata["VersionIdsToStages"]:

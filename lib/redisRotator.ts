@@ -96,10 +96,10 @@ export class RedisRbacRotation extends cdk.Construct{
     const rotationTestUserGroup = new elasticache.CfnUserGroup(this, 'rotationTestUserGroup', {
       engine: 'redis',
       userGroupId: 'rotation-test-group',
-      userIds: [testUser.getUserId(), groupDefaultRbacUser.getUserId(), anotherUser.getUserId()]
+      // userIds: [testUser.getUserId(), groupDefaultRbacUser.getUserId(), anotherUser.getUserId()]
+      userIds: [groupDefaultRbacUser.getUserId()]
     })
 
-    rotationTestUserGroup.node.addDependency(testUserRole);
     rotationTestUserGroup.node.addDependency(groupDefaultRbacUser);
 
     const ecClusterReplicationGroup = new elasticache.CfnReplicationGroup(this, 'RBACRotator-Demo', {
