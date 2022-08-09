@@ -38,7 +38,7 @@ This example deploys:
 
 The secret will be configured with a rotation schedule and a custom rotator function (implemented in Python) that will rotate the auth token on the ElastiCache repolication group via the Boto3 library. The rotator function will use the redispy Python library to connect to Redis to validate that the auth token is rotated.
 
-Details on how the rotation function works can be found [here](https://docs.aws.amazon.com/secretsmanager/latest/userguide/rotating-secrets-one-user-one-password.html).
+Details on how the rotation function works can be found [here](https://docs.aws.amazon.com/secretsmanager/latest/userguide/rotating-secrets_strategies.html#rotating-secrets-one-user-one-password).
 
 ![flow](img/secret-flow.png)
 
